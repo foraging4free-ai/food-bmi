@@ -4,6 +4,41 @@ import math
 import uuid
 from datetime import datetime, timedelta
 from foods import FOOD_DATABASE
+# --- MOBILE DESIGN CONFIGURATION ---
+st.markdown("""
+    <style>
+    /* 1. Hide the desktop header menu and footer padding */
+    header, footer, [data-testid="stToolbar"] {
+        visibility: hidden !important;
+        height: 0px !important;
+    }
+    
+    /* 2. Remove giant empty desktop padding on the sides */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
+    }
+    
+    /* 3. Make all input fields and buttons bigger for human thumbs */
+    div.stButton > button:first-child {
+        width: 100% !important;
+        height: 50px !important;
+        font-size: 18px !important;
+        font-weight: bold !important;
+        border-radius: 12px !important;
+        background-color: #FF4B4B !important; /* Changes button to a friendly active color */
+        color: white !important;
+    }
+    
+    /* 4. Make text boxes and numbers inputs easier to tap */
+    input {
+        font-size: 16px !important; /* Prevents iOS/Android from forcing an awkward zoom */
+        padding: 10px !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
