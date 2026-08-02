@@ -1,252 +1,558 @@
-# app.py
 import streamlit as st
-import streamlit as st
-
-# --- WATERMARK CONFIGURATION ---
-# This injects custom CSS to stick your name to the bottom-right of the Firefox window
-st.markdown(
-    """
-    <style>
-    .sticky-watermark {
-        position: fixed;
-        bottom: 15px;
-        right: 15px;
-        background-color: rgba(255, 255, 255, 0.75); /* Soft white background */
-        color: #111111;                             /* Dark text for contrast */
-        padding: 6px 12px;
-        font-family: 'Source Sans Pro', sans-serif;
-        font-size: 13px;
-        font-weight: 600;
-        border-radius: 6px;
-        box-shadow: 0px 2px 5px rgba(0,0,0,0.1);
-        z-index: 999999;                            /* Keeps it on top of other elements */
-        pointer-events: none;                       /* Allows clicks to pass through it */
-    }
-    
-    /* Dark mode adaptation */
-    @media (prefers-color-scheme: dark) {
-        .sticky-watermark {
-            background-color: rgba(38, 39, 48, 0.85);
-            color: #ffffff;
-            box-shadow: 0px 2px 5px rgba(0,0,0,0.3);
-        }
-    }
-    </style>
-    <div class="sticky-watermark">
-        👤 Matthew Parnell
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
-import datetime
+import math
+import uuid
+from datetime import datetime, timedelta
 from foods import FOOD_DATABASE
 
-# --- MAIN PAGE ENGINE LAYER ---
-st.set_page_config(page_title="Metabolic Digestion Calculator", page_icon="🍽️", layout="centered")
-st.title("🍽️ Fully Automated Metabolic Calculator")
-st.markdown("---")
-st.subheader("Your plate automatically decodes its own biological structure and layout speeds.")
+# --- PAGE CONFIGURATION ---
+st.set_page_config(
+    page_title="Metabolic Digestion Calculator",
+    page_icon="🍴",
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
 
-if "current_meal" not in st.session_state:
-    st.session_state.current_meal = []
+# --- CLEAN MINIMALISM CUSTOM CSS FOR MOBILE-OPTIMIZED LAYOUT ---
+st.markdown("""
+<style>
+/* Global Clean Minimalism Theme */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
-# --- INGREDIENT REGISTRATION SECTION ---
-st.markdown("### 🛒 Log Batch Ingredients")
+html, body, [class*="css"] {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #FEF7FF;
+    color: #1D1B20;
+}
 
-# Search and filter options
-search_query = st.text_input("Search food item:", placeholder="Search ingredients...")
+/* Mobile-friendly container spacing */
+.block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 5rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    max-width: 640px;
+}
 
-if not search_query.strip():
-    filtered_options = list(FOOD_DATABASE.keys())
-else:
-    filtered_options = [food for food in FOOD_DATABASE.keys() if search_query.lower() in food.lower()]
+/* Distinct Visual Card Containers */
+div[data-testid="stVerticalBlock"] > div[style*="border"], 
+.metabolic-card {
+    background: #FFFFFF;
+    border: 1px solid rgba(202, 196, 208, 0.4);
+    border-radius: 24px;
+    padding: 1.25rem;
+    box-shadow: 0 4px 16px rgba(103, 80, 164, 0.05);
+    margin-bottom: 1rem;
+}
 
-if filtered_options:
-    selected_food = st.selectbox("Select exact matched ingredient:", filtered_options)
-    
-    # === SMART PORTION DECODER ===
-    sel_lower = selected_food.lower()
-    
-    if "slice" in sel_lower or "crumpet" in sel_lower or "bun" in sel_lower or "croissant" in sel_lower or "wrap" in sel_lower or "muffin" in sel_lower:
-        unit_type = "slices/pieces"
-        default_weight = 40 if "sourdough" in sel_lower else 35  
-    elif "egg" in sel_lower:
-        unit_type = "eggs"
-        default_weight = 50
-    elif "sausage" in sel_lower:
-        unit_type = "sausages"
-        default_weight = 60
-    elif "tbsp" in sel_lower or "tallow" in sel_lower or "oil" in sel_lower or "butter" in sel_lower or "honey" in sel_lower or "syrup" in sel_lower:
-        unit_type = "tablespoons"
-        default_weight = 15
-    elif "black pudding" in sel_lower or "haggis" in sel_lower:
-        unit_type = "standard slices"
-        default_weight = 50
-    elif "steak" in sel_lower or "breast" in sel_lower or "thigh" in sel_lower or "fillet" in sel_lower or "chop" in sel_lower or "kippers" in sel_lower:
-        unit_type = "whole cuts/pieces"
-        default_weight = 150
-    elif "potato" in sel_lower or "tomato" in sel_lower or "mushroom" in sel_lower or "onion" in sel_lower:
-        unit_type = "whole items"
-        default_weight = 80
-    elif "milk" in sel_lower or "broth" in sel_lower or "stock" in sel_lower or "water" in sel_lower:
-        unit_type = "cups/mugs"
-        default_weight = 250
-    elif "beans" in sel_lower or "oats" in sel_lower or "rice" in sel_lower or "pasta" in sel_lower or "lentils" in sel_lower or "chickpeas" in sel_lower:
-        unit_type = "hearty handfuls / scoops"
-        default_weight = 75
+/* Header Styling */
+.metabolic-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 0.5rem;
+    margin-bottom: 1rem;
+}
+.header-title {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #1D1B20;
+    letter-spacing: -0.02em;
+    margin: 0;
+}
+.header-subtitle {
+    font-size: 0.8rem;
+    color: #49454F;
+    margin: 0;
+}
+
+/* Thumb-friendly Full-Width Buttons */
+div.stButton > button {
+    width: 100% !important;
+    min-height: 54px !important;
+    border-radius: 16px !important;
+    font-size: 0.95rem !important;
+    font-weight: 700 !important;
+    padding: 0.75rem 1.25rem !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: none !important;
+    box-shadow: 0 2px 8px rgba(103, 80, 164, 0.15) !important;
+    transition: all 0.15s ease !important;
+}
+
+/* Primary purple button accent */
+div.stButton > button[kind="primary"] {
+    background-color: #6750A4 !important;
+    color: #FFFFFF !important;
+}
+div.stButton > button[kind="primary"]:hover {
+    background-color: #584193 !important;
+}
+
+/* Secondary outline button style */
+div.stButton > button[kind="secondary"] {
+    background-color: #F3EDF7 !important;
+    color: #6750A4 !important;
+    border: 1px solid rgba(103, 80, 164, 0.3) !important;
+}
+
+/* Danger button for clear batch */
+.danger-btn > div.stButton > button {
+    background-color: #E53935 !important;
+    color: #FFFFFF !important;
+}
+
+/* Badge tags */
+.metabolic-badge {
+    background-color: #E8DEF8;
+    color: #21005D;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.35rem 0.75rem;
+    border-radius: 9999px;
+    display: inline-block;
+}
+
+/* Card title & subtitle layout */
+.card-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.85rem;
+}
+.card-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #1D1B20;
+    margin: 0;
+}
+.card-subtitle {
+    font-size: 0.8rem;
+    color: #49454F;
+    margin: 0;
+}
+
+/* Hero Biological Clearance Time Box */
+.clearance-hero {
+    background: linear-gradient(135deg, #E8DEF8 0%, #F3EDF7 100%);
+    border-radius: 20px;
+    padding: 1.5rem;
+    text-align: center;
+    margin: 1rem 0;
+}
+.clearance-time {
+    font-size: 2.8rem;
+    font-weight: 800;
+    color: #21005D;
+    margin: 0.25rem 0;
+}
+
+/* Warning alert box (Combined Enemy) */
+.alert-enemy {
+    background-color: #F2B8B5;
+    color: #601410;
+    border: 1px solid #B3261E;
+    border-radius: 16px;
+    padding: 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin: 0.75rem 0;
+}
+/* Success alert box */
+.alert-success {
+    background-color: #D7F5E4;
+    color: #0F5132;
+    border: 1px solid #198754;
+    border-radius: 16px;
+    padding: 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin: 0.75rem 0;
+}
+
+/* Ensure inputs stack vertically on mobile */
+@media (max-width: 768px) {
+    div[data-testid="column"] {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+    }
+    .stTextInput, .stNumberInput, .stSelectbox, .stSlider {
+        width: 100% !important;
+    }
+}
+
+/* Sticky Watermark Bottom Right */
+.sticky-watermark {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    background-color: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(202, 196, 208, 0.6);
+    border-radius: 10px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1D1B20;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 9999;
+    backdrop-filter: blur(4px);
+}
+</style>
+""", unsafe_allow_html=True)
+
+# --- SESSION STATE INITIALIZATION ---
+if "logged_meal" not in st.session_state:
+    st.session_state["logged_meal"] = []
+if "custom_foods" not in st.session_state:
+    st.session_state["custom_foods"] = {}
+if "servings" not in st.session_state:
+    st.session_state["servings"] = 1
+if "meal_hour" not in st.session_state:
+    st.session_state["meal_hour"] = 18
+if "meal_minute" not in st.session_state:
+    st.session_state["meal_minute"] = 0
+if "bmi_weight" not in st.session_state:
+    st.session_state["bmi_weight"] = 74.0
+if "bmi_height" not in st.session_state:
+    st.session_state["bmi_height"] = 176.0
+
+# Merge built-in food database with any user-injected supermarket packets
+combined_db = {**FOOD_DATABASE, **st.session_state["custom_foods"]}
+
+# --- HELPER FUNCTIONS ---
+def get_portion_rule(food_name):
+    """Smart portion decoder returning unit label and default weight in grams."""
+    lower = food_name.lower()
+    if any(w in lower for w in ["slice", "crumpet", "bun", "croissant", "wrap", "muffin"]):
+        w = 40 if "sourdough" in lower else 35
+        return ("slices/pieces", w)
+    elif "egg" in lower:
+        return ("eggs", 50)
+    elif "sausage" in lower:
+        return ("sausages", 60)
+    elif any(w in lower for w in ["tbsp", "tallow", "oil", "butter", "honey", "syrup"]):
+        return ("tablespoons", 15)
+    elif any(w in lower for w in ["black pudding", "haggis"]):
+        return ("standard slices", 50)
+    elif any(w in lower for w in ["steak", "breast", "thigh", "fillet", "chop", "kippers"]):
+        return ("whole cuts/pieces", 150)
+    elif any(w in lower for w in ["potato", "tomato", "mushroom", "onion"]):
+        return ("whole items", 80)
+    elif any(w in lower for w in ["milk", "broth", "stock", "water"]):
+        return ("cups/mugs", 250)
+    elif any(w in lower for w in ["beans", "oats", "rice", "pasta", "lentils", "chickpeas"]):
+        return ("hearty handfuls / scoops", 75)
     else:
-        unit_type = "servings"
-        default_weight = 100
+        return ("servings", 100)
 
-    item_count = st.slider(f"How many {unit_type} did you add to the whole recipe batch?", 1, 12, 2)
-    batch_weight = item_count * default_weight
+def determine_packet_properties(name):
+    lower = name.lower()
+    wheat_val = 1 if any(x in lower for x in ["bread", "flour", "sourdough", "pasta", "spaghetti", "orzo", "crumpet", "biscuit", "cracker", "pastry", "rye", "barley"]) else 0
+    if any(x in lower for x in ["broth", "stock", "coffee", "tea", "water", "juice", "milk"]):
+        base_mins = 45 if "coconut milk" in lower else 15
+    elif any(x in lower for x in ["yogurt", "yoghourt", "mousse", "fraiche", "creme", "cheese"]):
+        base_mins = 120 if any(y in lower for y in ["cheddar", "colby", "parmesan", "feta", "halloumi", "goats", "blue"]) else 45
+    elif any(x in lower for x in ["cracker", "biscuit", "oatcake", "nib"]):
+        base_mins = 60
+    elif any(x in lower for x in ["bread", "flour", "sourdough", "pasta", "spaghetti", "orzo", "rice", "oats", "porridge", "rye", "barley"]):
+        base_mins = 90
+    else:
+        base_mins = 120
+    return base_mins, wheat_val
 
-    if st.button("➕ Add to Recipe Batch", use_container_width=True):
-        f, p, base_m, w = FOOD_DATABASE[selected_food]
-        total_item_fat = (f / 100) * batch_weight
-        total_item_protein = (p / 100) * batch_weight
+# --- TOP MOBILE HEADER ---
+st.markdown("""
+<div class="metabolic-header">
+    <div>
+        <h1 class="header-title">🍴 Metabolic Calc</h1>
+        <p class="header-subtitle">Biological structure & stomach clearance speeds</p>
+    </div>
+    <div style="width: 40px; height: 40px; border-radius: 50%; background: #E8DEF8; display: flex; align-items: center; justify-content: center; font-size: 18px;">
+        👤
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# --- CARD 1: INGREDIENT REGISTRATION CARD ---
+with st.container():
+    st.markdown("""
+    <div class="card-header-row">
+        <div>
+            <h2 class="card-title">Log Batch Ingredients</h2>
+            <p class="card-subtitle">Search and scale portions for your recipe</p>
+        </div>
+        <span class="metabolic-badge">Batch Registry</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    food_names = sorted(list(combined_db.keys()))
+    selected_food = st.selectbox(
+        "Select Ingredient:",
+        options=food_names,
+        key="food_select",
+        help="Type to search e.g. Sourdough, Eggs, Butter..."
+    )
+    
+    unit_label, default_weight = get_portion_rule(selected_food)
+    
+    st.markdown(f"**Smart Portion Decoder:** Default `{default_weight}g` per `{unit_label}`")
+    
+    item_count = st.slider(
+        f"How many {unit_label} added to batch?",
+        min_value=1,
+        max_value=12,
+        value=2,
+        step=1,
+        key="portion_slider"
+    )
+    
+    total_grams = item_count * default_weight
+    st.caption(f"Calculated Total Batch Weight: **{total_grams}g**")
+    
+    if st.button("➕ Add to Recipe Batch", key="add_to_batch", type="primary"):
+        fat_100g, prot_100g, base_mins, is_wheat = combined_db[selected_food]
+        total_fat = (fat_100g / 100.0) * total_grams
+        total_prot = (prot_100g / 100.0) * total_grams
+        clean_name = selected_food.split(" - ")[-1] if " - " in selected_food else selected_food
         
-        display_name = f"{item_count} {unit_type} of {selected_food.split(' - ')[-1]}"
-        
-        st.session_state.current_meal.append({
-            "name": display_name,
-            "weight": batch_weight,
-            "fat": total_item_fat,
-            "protein": total_item_protein,
-            "baseline": base_m,
-            "is_wheat": w
+        st.session_state["logged_meal"].append({
+            "id": str(uuid.uuid4())[:8],
+            "display": f"{item_count} {unit_label} of {clean_name}",
+            "base_name": selected_food,
+            "weight_g": total_grams,
+            "fat_g": total_fat,
+            "prot_g": total_prot,
+            "base_mins": base_mins,
+            "is_wheat": is_wheat
         })
-        st.toast("Logged into your cooking batch!")
-else:
-    st.error("❌ No matching items found.")
-
-st.markdown("---")
-
-# --- BATCH VIEWPORT LAYER ---
-st.markdown("### 🥣 Current Recipe Batch Components")
-
-batch_fat, batch_protein, is_wheat_present = 0.0, 0.0, False
-auto_baseline = 15 
-
-if not st.session_state.current_meal:
-    st.info("Your recipe batch is empty. Log items above to map totals.")
-else:
-    for item in st.session_state.current_meal:
-        st.write(f"• **{item['name']}**")
-        batch_fat += item['fat']
-        batch_protein += item['protein']
-        if item['is_wheat'] == 1: 
-            is_wheat_present = True
-        auto_baseline = max(auto_baseline, item['baseline'])
-            
-    if st.button("🗑️ Clear Batch", type="primary"):
-        st.session_state.current_meal = []
+        st.success(f"Added {item_count} {unit_label} of {clean_name} to batch!")
         st.rerun()
 
-st.markdown("---")
-
-# --- PORTION CONTROL & TIMING SIDEBAR ---
-st.sidebar.header("📋 Servings & Timing")
-
-servings = st.sidebar.number_input("How many portions or plates does this batch make?", min_value=1, max_value=20, value=1, step=1)
-meal_time = st.sidebar.time_input("What time are you eating your plate?", datetime.time(18, 0))
-
-# --- AUTOMATED PACKET INJECTOR ---
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🏬 Supermarket Packet Injector")
-st.sidebar.caption("Save custom items from Tesco or Morrisons packets. Base style is auto-decoded.")
-
-with st.sidebar.form("packet_form", clear_on_submit=True):
-    new_name = st.text_input("Product Name & Brand:", placeholder="e.g., Tesco Black Pudding Slices")
-    new_fat = st.number_input("Fat per 100g:", min_value=0.0, max_value=100.0, step=0.1)
-    new_protein = st.number_input("Protein per 100g:", min_value=0.0, max_value=100.0, step=0.1)
+# --- CARD 2: CURRENT RECIPE BATCH REGISTRY ---
+with st.container():
+    st.markdown("""
+    <div class="card-header-row">
+        <div>
+            <h2 class="card-title">Current Recipe Batch</h2>
+            <p class="card-subtitle">Total fats, proteins & wheat structure</p>
+        </div>
+        <span class="metabolic-badge">{} Items</span>
+    </div>
+    """.format(len(st.session_state["logged_meal"])), unsafe_allow_html=True)
     
-    submit_packet = st.form_submit_button("💾 Save Product Permanently")
-    
-    if submit_packet and new_name:
-        name_lower = new_name.lower()
-        wheat_val = 1 if any(w in name_lower for w in ["bread", "flour", "sourdough", "pasta", "spaghetti", "orzo", "crumpet", "biscuit", "cracker", "pastry", "rye", "barley"]) else 0
+    if not st.session_state["logged_meal"]:
+        st.info("Your recipe batch is empty. Log ingredients above to calculate digestion.")
+    else:
+        for idx, item in enumerate(st.session_state["logged_meal"]):
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.markdown(f"**• {item['display']}**")
+                st.caption(f"{int(item['weight_g'])}g | Fat: **{int(item['fat_g'])}g** | Protein: **{int(item['prot_g'])}g**")
+            with col2:
+                if st.button("🗑️", key=f"del_{item['id']}", help="Remove item"):
+                    st.session_state["logged_meal"].pop(idx)
+                    st.rerun()
         
-        if any(w in name_lower for w in ["broth", "stock", "coffee", "tea", "water", "juice", "milk"]):
-            base_mins_val = 45 if "coconut milk" in name_lower else 15
-        elif any(w in name_lower for w in ["yogurt", "yoghourt", "mousse", "fraiche", "creme", "cheese"]):
-            base_mins_val = 120 if any(w in name_lower for w in ["cheddar", "colby", "parmesan", "feta", "halloumi", "goats", "blue"]) else 45
-        elif any(w in name_lower for w in ["cracker", "biscuit", "oatcake", "nib"]):
-            base_mins_val = 60
-        elif any(w in name_lower for w in ["bread", "flour", "sourdough", "pasta", "spaghetti", "orzo", "rice", "oats", "porridge", "rye", "barley"]):
-            base_mins_val = 90
-        else:
-            base_mins_val = 120
-            
-        try:
-            with open("foods.py", "r", encoding="utf-8") as f_file:
-                lines = f_file.readlines()
-            for idx, line in reversed(list(enumerate(lines))):
-                if "}" in line:
-                    lines.insert(idx, f'    "{new_name}": ({new_fat}, {new_protein}, {base_mins_val}, {wheat_val}),\n')
-                    break
-            with open("foods.py", "w", encoding="utf-8") as f_file:
-                f_file.writelines(lines)
-            st.sidebar.success(f"Saved custom packet!")
-        except:
-            st.sidebar.error("Error saving file.")
+        batch_fat = sum(item["fat_g"] for item in st.session_state["logged_meal"])
+        batch_prot = sum(item["prot_g"] for item in st.session_state["logged_meal"])
+        wheat_present = any(item["is_wheat"] for item in st.session_state["logged_meal"])
+        
+        st.markdown("---")
+        st.markdown(f"**Batch Total:** Fat `{batch_fat:.1f}g` | Protein `{batch_prot:.1f}g` | Wheat: `{'PRESENT ⚠️' if wheat_present else 'FREE ✅'}`")
+        
+        st.markdown('<div class="danger-btn">', unsafe_allow_html=True)
+        if st.button("🗑️ Clear Entire Batch", key="clear_batch", type="secondary"):
+            st.session_state["logged_meal"] = []
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-# --- THE CORRECTED BIOLOGICAL GRAIN GUIDE ---
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🧬 The Biological Grain Rules")
-st.sidebar.markdown("""
-**💧 Water-Soluble Bases:**
-* *Examples:* Oats, Rice, Potatoes.
-* *How it works:* Pure oats contain *avenin*, which dissolves cleanly into water-based stomach juices instead of building a trap. Acid and bile can break down surrounding fats instantly at normal speeds.
+# --- CARD 3: SERVINGS & TIMING ---
+with st.container():
+    st.markdown("""
+    <div class="card-header-row">
+        <div>
+            <h2 class="card-title">Servings & Timing</h2>
+            <p class="card-subtitle">Portions per batch and consumption time</p>
+        </div>
+        <span class="metabolic-badge">Portions</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    servings = st.number_input(
+        "How many portions does this batch make?",
+        min_value=1,
+        max_value=20,
+        value=st.session_state["servings"],
+        step=1,
+        key="servings_input"
+    )
+    st.session_state["servings"] = servings
+    
+    col_hr, col_min = st.columns(2)
+    with col_hr:
+        meal_hour = st.selectbox(
+            "Eating Hour (24h clock):",
+            options=list(range(0, 24)),
+            index=st.session_state["meal_hour"],
+            key="meal_hr_select"
+        )
+        st.session_state["meal_hour"] = meal_hour
+    with col_min:
+        meal_min = st.selectbox(
+            "Minute:",
+            options=[0, 15, 30, 45],
+            index=[0, 15, 30, 45].index(st.session_state["meal_minute"]) if st.session_state["meal_minute"] in [0, 15, 30, 45] else 0,
+            key="meal_min_select"
+        )
+        st.session_state["meal_minute"] = meal_min
 
-**🍞 Elastic Gluten Sponges:**
-* *Examples:* Wheat Bread, Toast, Pasta, Barley, Rye Crackers, Wheaty Black Puddings.
-* *How it works:* True gluten (*gliadin/secalin*) forms an elastic, microscopic sponge. If cooking fats are present, they soak *into* the grain sponge, cloaking the food from stomach acid and forcing a heavy **30% time penalty**.
-""")
+    # Expanders for Supermarket Packet Injector & Biological Grain Rules
+    with st.expander("🛒 Supermarket Packet Injector (Add Custom Food)"):
+        st.markdown("Add custom products from Tesco, Morrisons, or Aldi:")
+        custom_name = st.text_input("Product Name & Brand", placeholder="e.g. Tesco Black Pudding Slices")
+        c_fat = st.number_input("Fat per 100g (g)", min_value=0.0, max_value=100.0, value=15.0, step=0.5)
+        c_prot = st.number_input("Protein per 100g (g)", min_value=0.0, max_value=100.0, value=12.0, step=0.5)
+        if st.button("💾 Save Custom Product", key="save_packet"):
+            if custom_name.strip():
+                base_mins, is_w = determine_packet_properties(custom_name)
+                st.session_state["custom_foods"][custom_name.strip()] = (c_fat, c_prot, base_mins, is_w)
+                st.success(f"Saved '{custom_name}'! It is now selectable in the dropdown.")
+                st.rerun()
+            else:
+                st.error("Please enter a product name.")
 
-# --- BIOLOGICAL CALCULATOR LOGIC ---
-personal_fat = batch_fat / servings
-personal_protein = batch_protein / servings
+    with st.expander("ℹ️ The Biological Grain Rules (Stomach Clearance)"):
+        st.markdown("""
+        **💧 Water-Soluble Bases (Oats, Rice, Potatoes)**
+        - Pure oats contain avenin, dissolving cleanly into water-based stomach juices without trapping fats.
+        - Gastric acid and bile break down surrounding fats at normal biological speeds.
 
-fat_penalty = int((personal_fat / 5) * 15)
-protein_penalty = int((personal_protein / 10) * 15)
-subtotal = auto_baseline + fat_penalty + protein_penalty
+        **🍞 Elastic Gluten Sponges (Wheat Bread, Toast, Pasta, Barley)**
+        - True gluten (gliadin/secalin) forms an elastic sponge structure.
+        - If cooking fats are present, they soak into the grain sponge, cloaking food from stomach acid and triggering a **+30% digestion time penalty**.
+        """)
 
-combined_enemy_triggered = False
-if is_wheat_present and personal_fat >= 10 and auto_baseline >= 60:
-    total_minutes = int(subtotal * 1.3)
-    combined_enemy_triggered = True
-else:
-    total_minutes = subtotal
+# --- CARD 4: BMI & PERSONAL PLATE ANALYSIS ---
+with st.container():
+    st.markdown("""
+    <div class="card-header-row">
+        <div>
+            <h2 class="card-title">Personal Plate Analysis</h2>
+            <p class="card-subtitle">1 of {} servings calculated + BMI correlation</p>
+        </div>
+        <span class="metabolic-badge">Personal Stats</span>
+    </div>
+    """.format(servings), unsafe_allow_html=True)
+    
+    batch_fat = sum(item["fat_g"] for item in st.session_state["logged_meal"])
+    batch_prot = sum(item["prot_g"] for item in st.session_state["logged_meal"])
+    personal_fat = batch_fat / max(1, servings)
+    personal_prot = batch_prot / max(1, servings)
+    
+    col_f, col_p = st.columns(2)
+    with col_f:
+        st.metric("FAT ON PLATE", f"{personal_fat:.1f}g")
+    with col_p:
+        st.metric("PROTEIN ON PLATE", f"{personal_prot:.1f}g")
+    
+    st.markdown("---")
+    st.markdown("#### **Metabolic BMI Index**")
+    
+    bmi_w = st.slider("Weight (kg)", 40.0, 150.0, st.session_state["bmi_weight"], 0.5, key="bmi_weight_slider")
+    bmi_h = st.slider("Height (cm)", 140.0, 210.0, st.session_state["bmi_height"], 0.5, key="bmi_height_slider")
+    st.session_state["bmi_weight"] = bmi_w
+    st.session_state["bmi_height"] = bmi_h
+    
+    height_m = max(0.5, bmi_h / 100.0)
+    bmi_val = bmi_w / (height_m * height_m)
+    
+    if bmi_val < 18.5:
+        bmi_cat = "Underweight"
+        bmi_tip = "Low glycogen reserve: ensure sufficient water-soluble oats or potatoes for steady energy."
+    elif bmi_val < 25.0:
+        bmi_cat = "Normal weight"
+        bmi_tip = "Optimal biological clearance zone: standard gastric emptying speeds apply."
+    elif bmi_val < 30.0:
+        bmi_cat = "Overweight"
+        bmi_tip = "Moderately elevated lipid transit: avoid combining heavy cooking fats with wheat gluten sponges."
+    else:
+        bmi_cat = "Obesity Zone"
+        bmi_tip = "High gastric retention risk: prioritize water-soluble bases and keep individual fat servings below 15g."
+        
+    st.markdown(f"**BMI Score:** `{bmi_val:.1f}` ({bmi_cat})")
+    st.caption(f"💡 {bmi_tip}")
 
-hours = total_minutes // 60
-minutes = total_minutes % 60
-meal_datetime = datetime.datetime.combine(datetime.date.today(), meal_time)
-clear_datetime = meal_datetime + datetime.timedelta(minutes=total_minutes)
-clear_time_str = clear_datetime.strftime("%I:%M %p")
-target_time = datetime.time(22, 0)
+# --- CARD 5: BIOLOGICAL TIMELINE & CLEARANCE RESULTS ---
+with st.container():
+    st.markdown("""
+    <div class="card-header-row">
+        <div>
+            <h2 class="card-title">Your Biological Timeline</h2>
+            <p class="card-subtitle">Stomach clearance forecast & structural checks</p>
+        </div>
+        <span class="metabolic-badge">Clearance Forecast</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if not st.session_state["logged_meal"]:
+        auto_baseline = 15
+    else:
+        auto_baseline = max(item["base_mins"] for item in st.session_state["logged_meal"])
+        
+    fat_penalty = int((personal_fat / 5.0) * 15.0)
+    prot_penalty = int((personal_prot / 10.0) * 15.0)
+    subtotal_mins = auto_baseline + fat_penalty + prot_penalty
+    
+    wheat_present = any(item["is_wheat"] for item in st.session_state["logged_meal"])
+    combined_enemy = wheat_present and personal_fat >= 10.0 and auto_baseline >= 60
+    
+    total_mins = int(subtotal_mins * 1.3) if combined_enemy else subtotal_mins
+    dig_hours = total_mins // 60
+    dig_rem_mins = total_mins % 60
+    
+    # Calculate finish clock time
+    start_time = datetime.now().replace(hour=meal_hour, minute=meal_min, second=0, microsecond=0)
+    clear_time = start_time + timedelta(minutes=total_mins)
+    clear_time_str = clear_time.strftime("%I:%M %p").lstrip("0")
+    
+    st.markdown(f"""
+    <div class="clearance-hero">
+        <div style="font-size: 0.8rem; font-weight: 700; color: #6750A4; text-transform: uppercase; letter-spacing: 0.08em;">Individual Portion Breakdown Time</div>
+        <div class="clearance-time">{dig_hours}h {dig_rem_mins}m</div>
+        <div style="font-size: 0.85rem; color: #49454F;">{total_mins} total biological digestion minutes</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if combined_enemy:
+        st.markdown("""
+        <div class="alert-enemy">
+            ⚠️ <strong>COMBINED ENEMY TRIGGERED</strong><br>
+            Calculated plate fat has saturated porous wheat layers. (+30% digestion penalty applied)
+        </div>
+        """, unsafe_allow_html=True)
+    elif st.session_state["logged_meal"]:
+        st.markdown("""
+        <div class="alert-success">
+            ✅ <strong>Clean Structural Layering</strong><br>
+            Food elements clear efficiently without stomach clogs.
+        </div>
+        """, unsafe_allow_html=True)
+        
+    st.markdown("---")
+    st.markdown(f"#### **Clearance Clock Time**")
+    st.markdown(f"If consumed at **{start_time.strftime('%I:%M %p').lstrip('0')}**, your stomach clears completely by:")
+    st.markdown(f"### 👉 **{clear_time_str}**")
+    
+    target_time = start_time.replace(hour=22, minute=0)
+    if clear_time <= target_time and clear_time.day == start_time.day:
+        st.success("🔥 METABOLIC SUCCESS: Window stays wide open before 10:00 PM!")
+    else:
+        st.error("❌ NOTICE: Digestion runs past 10:00 PM tonight.")
 
-# --- VISUAL DATA RENDER LAYER ---
-if st.session_state.current_meal:
-    st.markdown("### 📊 Personal Plate Analysis")
-    st.write(f"Your individual serving stats (1 of {servings} portions calculated):")
-    st.info(f"🧬 **Fat on Your Plate:** {personal_fat:.1f}g  |  🧬 **Protein on Your Plate:** {personal_protein:.1f}g")
-
-st.metric(label="⏱️ INDIVIDUAL PORTION BREAKDOWN TIME", value=f"{hours}h {minutes}m", delta=f"{total_minutes} total mins", delta_color="inverse")
-
-if combined_enemy_triggered: 
-    st.error("⚠️ COMBINED ENEMY TRIGGERED: The calculated plate fat has saturated your porous wheat layers.")
-elif st.session_state.current_meal: 
-    st.success("✅ Clean Structural Layering: Food elements clear efficiently without stomach clogs.")
-
-st.markdown("### ⏰ Your Biological Timeline")
-st.write(f"If consumed at **{meal_time.strftime('%I:%M %p')}**, your stomach clears completely by:")
-st.markdown(f"## 👉 **{clear_time_str}**")
-
-if clear_datetime.time() <= target_time and clear_datetime.date() == datetime.date.today():
-    st.success("🔥 METABOLIC SUCCESS: Window stays wide open!")
-else:
-    st.warning("❌ NOTICE: Digestion runs past 10:00 PM tonight.")
-
-st.markdown("<br><br><br><br><br><br><br><br>", unsafe_allow_html=True)
+# --- STICKY WATERMARK BOTTOM RIGHT ---
+st.markdown("""
+<div class="sticky-watermark">
+    👤 Matthew Parnell
+</div>
+""", unsafe_allow_html=True)
